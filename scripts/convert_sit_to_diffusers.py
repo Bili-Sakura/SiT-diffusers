@@ -1,5 +1,7 @@
 import argparse
+import json
 from pathlib import Path
+import shutil
 import sys
 
 import torch
@@ -37,6 +39,36 @@ def load_checkpoint(path: str):
     return {k.replace("module.", ""): v for k, v in checkpoint.items()}
 
 
+def infer_learn_sigma(state_dict: dict, patch_size: int, in_channels: int = 4) -> bool:
+    weight = state_dict.get("final_layer.linear.weight")
+    if weight is None:
+        return True
+    out_dim = weight.shape[0]
+    base = patch_size * patch_size * in_channels
+    return out_dim == base * 2
+
+
+def make_self_contained_repo(output_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    pipeline_src = repo_root / "src" / "diffusers" / "pipelines" / "sit" / "pipeline_sit.py"
+    transformer_src = repo_root / "src" / "diffusers" / "models" / "transformers" / "transformer_sit.py"
+    scheduler_src = repo_root / "src" / "diffusers" / "schedulers" / "scheduling_flow_match_sit.py"
+
+    shutil.copy2(pipeline_src, output_path / "pipeline.py")
+    shutil.copy2(transformer_src, output_path / "transformer" / "transformer_sit.py")
+    shutil.copy2(scheduler_src, output_path / "scheduler" / "scheduling_flow_match_sit.py")
+
+    model_index_path = output_path / "model_index.json"
+    with model_index_path.open("r", encoding="utf-8") as f:
+        model_index = json.load(f)
+    model_index["_class_name"] = ["pipeline", "SiTPipeline"]
+    model_index["transformer"] = ["transformer_sit", "SiTTransformer2DModel"]
+    model_index["scheduler"] = ["scheduling_flow_match_sit", "SiTFlowMatchScheduler"]
+    with model_index_path.open("w", encoding="utf-8") as f:
+        json.dump(model_index, f, indent=2)
+        f.write("\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert SiT checkpoint to Diffusers pipeline layout.")
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to SiT checkpoint (.pt)")
@@ -49,14 +81,14 @@ def main():
     args = parser.parse_args()
 
     spec = MODEL_SPECS[args.model_size]
+    state_dict = load_checkpoint(args.checkpoint)
+    learn_sigma = infer_learn_sigma(state_dict, patch_size=spec["patch_size"], in_channels=4)
     transformer = SiTTransformer2DModel(
         input_size=args.image_size // 8,
         num_classes=args.num_classes,
-        learn_sigma=True,
+        learn_sigma=learn_sigma,
         **spec,
     )
-
-    state_dict = load_checkpoint(args.checkpoint)
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
     if missing:
         print(f"[warn] missing keys: {len(missing)}")
@@ -70,6 +102,7 @@ def main():
     output_path = Path(args.output)
     output_path.mkdir(parents=True, exist_ok=True)
     pipeline.save_pretrained(output_path.as_posix())
+    make_self_contained_repo(output_path)
     print(f"Saved diffusers pipeline to: {output_path}")
 
 
