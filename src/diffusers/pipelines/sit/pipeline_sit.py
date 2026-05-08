@@ -71,7 +71,11 @@ class SiTPipeline(DiffusionPipeline):
             latents = self.scheduler.step(model_pred, t, latents, generator=generator).prev_sample
 
         image = self.vae.decode(latents / 0.18215).sample
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        # Keep PyTorch outputs in raw VAE range [-1, 1] to match original SiT scripts.
+        if output_type == "pt":
+            image = image
+        else:
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         if not return_dict:
             return (image,)
