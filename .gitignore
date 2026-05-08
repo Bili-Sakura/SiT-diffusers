@@ -1,7 +1,8 @@
 __pycache__
-wandb
+/wandb
 
 .DS_store
 samples
-results
-pretrained_models
+/results
+/pretrained_models
+/raw

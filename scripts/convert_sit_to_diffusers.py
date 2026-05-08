@@ -1,0 +1,77 @@
+import argparse
+from pathlib import Path
+import sys
+
+import torch
+from diffusers.models import AutoencoderKL
+
+sys.path.insert(0, Path(__file__).resolve().parents[1].as_posix())
+
+from src.diffusers.models.transformers.transformer_sit import SiTTransformer2DModel
+from src.diffusers.pipelines.sit.pipeline_sit import SiTPipeline
+from src.diffusers.schedulers.scheduling_flow_match_sit import SiTFlowMatchScheduler
+
+
+MODEL_SPECS = {
+    "sit-xl-2": dict(depth=28, hidden_size=1152, patch_size=2, num_heads=16),
+    "sit-xl-4": dict(depth=28, hidden_size=1152, patch_size=4, num_heads=16),
+    "sit-xl-8": dict(depth=28, hidden_size=1152, patch_size=8, num_heads=16),
+    "sit-l-2": dict(depth=24, hidden_size=1024, patch_size=2, num_heads=16),
+    "sit-l-4": dict(depth=24, hidden_size=1024, patch_size=4, num_heads=16),
+    "sit-l-8": dict(depth=24, hidden_size=1024, patch_size=8, num_heads=16),
+    "sit-b-2": dict(depth=12, hidden_size=768, patch_size=2, num_heads=12),
+    "sit-b-4": dict(depth=12, hidden_size=768, patch_size=4, num_heads=12),
+    "sit-b-8": dict(depth=12, hidden_size=768, patch_size=8, num_heads=12),
+    "sit-s-2": dict(depth=12, hidden_size=384, patch_size=2, num_heads=6),
+    "sit-s-4": dict(depth=12, hidden_size=384, patch_size=4, num_heads=6),
+    "sit-s-8": dict(depth=12, hidden_size=384, patch_size=8, num_heads=6),
+}
+
+
+def load_checkpoint(path: str):
+    checkpoint = torch.load(path, map_location="cpu")
+    if "ema" in checkpoint:
+        checkpoint = checkpoint["ema"]
+    if "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
+    return {k.replace("module.", ""): v for k, v in checkpoint.items()}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert SiT checkpoint to Diffusers pipeline layout.")
+    parser.add_argument("--checkpoint", type=str, required=True, help="Path to SiT checkpoint (.pt)")
+    parser.add_argument("--output", type=str, required=True, help="Output directory")
+    parser.add_argument("--model-size", type=str, choices=sorted(MODEL_SPECS.keys()), required=True)
+    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--num-classes", type=int, default=1000)
+    parser.add_argument("--mode", type=str, choices=["ode", "sde"], default="ode")
+    parser.add_argument("--vae", type=str, default="stabilityai/sd-vae-ft-mse")
+    args = parser.parse_args()
+
+    spec = MODEL_SPECS[args.model_size]
+    transformer = SiTTransformer2DModel(
+        input_size=args.image_size // 8,
+        num_classes=args.num_classes,
+        learn_sigma=True,
+        **spec,
+    )
+
+    state_dict = load_checkpoint(args.checkpoint)
+    missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
+    if missing:
+        print(f"[warn] missing keys: {len(missing)}")
+    if unexpected:
+        print(f"[warn] unexpected keys: {len(unexpected)}")
+
+    scheduler = SiTFlowMatchScheduler(mode=args.mode)
+    vae = AutoencoderKL.from_pretrained(args.vae)
+    pipeline = SiTPipeline(transformer=transformer, scheduler=scheduler, vae=vae)
+
+    output_path = Path(args.output)
+    output_path.mkdir(parents=True, exist_ok=True)
+    pipeline.save_pretrained(output_path.as_posix())
+    print(f"Saved diffusers pipeline to: {output_path}")
+
+
+if __name__ == "__main__":
+    main()
