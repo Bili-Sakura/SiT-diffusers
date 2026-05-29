@@ -14,9 +14,11 @@
 
 from __future__ import annotations
 
+import inspect
+
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 import torch
 
@@ -61,6 +63,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+
 class SiTPipeline(DiffusionPipeline):
     r"""
     Pipeline for class-conditional image generation with Scalable Interpolant Transformers (SiT).
@@ -75,6 +78,20 @@ class SiTPipeline(DiffusionPipeline):
         id2label (`dict[int, str]`, *optional*):
             ImageNet class id to English label mapping. Values may contain comma-separated synonyms.
     """
+
+    @staticmethod
+    def prepare_extra_step_kwargs(
+        scheduler,
+        generator=None,
+        eta: float | None = None,
+    ):
+        kwargs = {}
+        step_params = set(inspect.signature(scheduler.step).parameters.keys())
+        if "generator" in step_params:
+            kwargs["generator"] = generator
+        if eta is not None and "eta" in step_params:
+            kwargs["eta"] = eta
+        return kwargs
 
     model_cpu_offload_seq = "transformer->vae"
 
@@ -307,6 +324,7 @@ class SiTPipeline(DiffusionPipeline):
             labels = torch.cat([class_labels_tensor, null_labels], dim=0)
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        extra_step_kwargs = self.prepare_extra_step_kwargs(self.scheduler, generator=generator)
         num_train_timesteps = self.scheduler.config.num_train_timesteps
 
         if getattr(self.scheduler.config, "stochastic_sampling", False):
