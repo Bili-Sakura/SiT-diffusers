@@ -6,12 +6,12 @@ import sys
 
 import torch
 from diffusers.models import AutoencoderKL
+from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 
 sys.path.insert(0, Path(__file__).resolve().parents[1].as_posix())
 
 from src.diffusers.models.transformers.transformer_sit import SiTTransformer2DModel
 from src.diffusers.pipelines.sit.pipeline_sit import SiTPipeline
-from src.diffusers.schedulers.scheduling_flow_match_sit import SiTFlowMatchScheduler
 
 
 MODEL_SPECS = {
@@ -27,6 +27,14 @@ MODEL_SPECS = {
     "sit-s-2": dict(depth=12, hidden_size=384, patch_size=2, num_heads=6),
     "sit-s-4": dict(depth=12, hidden_size=384, patch_size=4, num_heads=6),
     "sit-s-8": dict(depth=12, hidden_size=384, patch_size=8, num_heads=6),
+}
+
+SCHEDULER_CONFIG = {
+    "_class_name": "FlowMatchEulerDiscreteScheduler",
+    "_diffusers_version": "0.36.0",
+    "num_train_timesteps": 1000,
+    "shift": 1.0,
+    "stochastic_sampling": False,
 }
 
 
@@ -52,18 +60,23 @@ def make_self_contained_repo(output_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     pipeline_src = repo_root / "src" / "diffusers" / "pipelines" / "sit" / "pipeline_sit.py"
     transformer_src = repo_root / "src" / "diffusers" / "models" / "transformers" / "transformer_sit.py"
-    scheduler_src = repo_root / "src" / "diffusers" / "schedulers" / "scheduling_flow_match_sit.py"
 
     shutil.copy2(pipeline_src, output_path / "pipeline.py")
     shutil.copy2(transformer_src, output_path / "transformer" / "transformer_sit.py")
-    shutil.copy2(scheduler_src, output_path / "scheduler" / "scheduling_flow_match_sit.py")
+
+    scheduler_dir = output_path / "scheduler"
+    scheduler_dir.mkdir(parents=True, exist_ok=True)
+    (scheduler_dir / "scheduler_config.json").write_text(json.dumps(SCHEDULER_CONFIG, indent=2) + "\n", encoding="utf-8")
+    legacy_scheduler = scheduler_dir / "scheduling_flow_match_sit.py"
+    if legacy_scheduler.exists():
+        legacy_scheduler.unlink()
 
     model_index_path = output_path / "model_index.json"
     with model_index_path.open("r", encoding="utf-8") as f:
         model_index = json.load(f)
     model_index["_class_name"] = ["pipeline", "SiTPipeline"]
     model_index["transformer"] = ["transformer_sit", "SiTTransformer2DModel"]
-    model_index["scheduler"] = ["scheduling_flow_match_sit", "SiTFlowMatchScheduler"]
+    model_index["scheduler"] = ["diffusers", "FlowMatchEulerDiscreteScheduler"]
     with model_index_path.open("w", encoding="utf-8") as f:
         json.dump(model_index, f, indent=2)
         f.write("\n")
@@ -76,7 +89,6 @@ def main():
     parser.add_argument("--model-size", type=str, choices=sorted(MODEL_SPECS.keys()), required=True)
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
-    parser.add_argument("--mode", type=str, choices=["ode", "sde"], default="ode")
     parser.add_argument("--vae", type=str, default="stabilityai/sd-vae-ft-mse")
     args = parser.parse_args()
 
@@ -95,7 +107,7 @@ def main():
     if unexpected:
         print(f"[warn] unexpected keys: {len(unexpected)}")
 
-    scheduler = SiTFlowMatchScheduler(mode=args.mode)
+    scheduler = FlowMatchEulerDiscreteScheduler.from_config(SCHEDULER_CONFIG)
     vae = AutoencoderKL.from_pretrained(args.vae)
     pipeline = SiTPipeline(transformer=transformer, scheduler=scheduler, vae=vae)
 

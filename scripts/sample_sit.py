@@ -1,12 +1,22 @@
+#!/usr/bin/env python3
+"""Sample images from a converted SiT Diffusers pipeline directory."""
+
+from __future__ import annotations
+
 import argparse
+import sys
+from pathlib import Path
 
 import torch
 from torchvision.utils import save_image
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from src.diffusers.pipelines.sit.pipeline_sit import SiTPipeline
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Sample images from a converted SiT diffusers pipeline.")
     parser.add_argument("--model", type=str, required=True, help="Path to pipeline directory")
     parser.add_argument("--class-label", type=int, default=207)

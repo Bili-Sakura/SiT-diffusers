@@ -1,3 +1,18 @@
+Metadata-Version: 2.4
+Name: sit-diffusers
+Version: 0.1.0
+Summary: Diffusers-style SiT implementation
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: diffusers>=0.31.0
+Requires-Dist: torch>=2.2.0
+Requires-Dist: torchvision>=0.17.0
+Requires-Dist: transformers>=4.40.0
+Requires-Dist: timm>=0.9.0
+Requires-Dist: safetensors>=0.4.0
+Dynamic: license-file
+
 # SiT for Diffusers
 
 This repository is refactored to a Diffusers-style layout and API surface.
@@ -7,8 +22,8 @@ The old standalone training and sampling stack (`train.py`, `sample.py`, `sample
 ## Package Layout
 
 - `src/diffusers/models/transformers/transformer_sit.py`: `SiTTransformer2DModel`
+- `src/diffusers/schedulers/scheduling_flow_match_sit.py`: `SiTFlowMatchScheduler`
 - `src/diffusers/pipelines/sit/pipeline_sit.py`: `SiTPipeline`
-- Scheduler: upstream `diffusers.FlowMatchEulerDiscreteScheduler` (only `scheduler/scheduler_config.json` in model repos)
 - `scripts/convert_sit_to_diffusers.py`: checkpoint conversion to a Diffusers pipeline directory
 - `scripts/sample_sit.py`: sampling from a converted pipeline
 
@@ -47,7 +62,6 @@ python scripts/sample_sit.py \
 
 ## Notes
 
-- The architecture and repository split were aligned with the Diffusers-native style used by the NiT diffusers refactor and `docs/guideline-standard-custom-pipeline.md`.
-- Inference uses upstream `FlowMatchEulerDiscreteScheduler` (`shift=1.0`, deterministic ODE stepping).
-- Regenerate Hub bundles with `python scripts/build_community_pipelines.py` and sync model repos with `python scripts/sync_sit_hub_bundle.py`.
-- Run tests: `pytest tests/test_sit_diffusers.py -q` from this directory.
+- The architecture and repository split were aligned with the Diffusers-native style used by the NiT diffusers refactor.
+- The scheduler supports ODE and SDE-like stepping in a single class via `mode`.
+- The code is ready to upstream into corresponding `diffusers` package directories.

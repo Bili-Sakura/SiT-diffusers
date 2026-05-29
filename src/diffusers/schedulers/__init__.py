@@ -1,3 +1,5 @@
-from .scheduling_flow_match_sit import SiTFlowMatchScheduler
+from pkgutil import extend_path
 
-__all__ = ["SiTFlowMatchScheduler"]
+__path__ = extend_path(__path__, __name__)
+
+__all__ = []

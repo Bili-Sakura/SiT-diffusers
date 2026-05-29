@@ -52,7 +52,7 @@ image.save("demo.png")
 
 - `pipeline.py`
 - `transformer/transformer_sit.py`
-- `scheduler/scheduling_flow_match_sit.py`
+- `scheduler/scheduler_config.json`
 - `transformer/diffusion_pytorch_model.safetensors`
 - `vae/diffusion_pytorch_model.safetensors`
 """
